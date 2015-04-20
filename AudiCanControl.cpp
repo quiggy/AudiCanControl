@@ -13,9 +13,12 @@
 int actPosition = 0;
 int RadioMode = 0;
 int ignitionStatus = 1;
+int kmStand = 0;
+String FgNummer_temp = "";
+String FgNummer_comp = "";
 
 char completeFisLine1[] = " iPhone ";
-char completeFisLine2[] = "RNS-E BT";
+char completeFisLine2[] = "RNS-E BT Dies ist ein TEst";
 char actualFisLine2[8] = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
 
 AudiCanControl::AudiCanControl()
@@ -24,10 +27,11 @@ AudiCanControl::AudiCanControl()
 
 void AudiCanControl::setup() {  
   // Setup the intervals...
-  IdleInterval = 500;
-  FISInterval = 500;
-  ScrollInterval = 2000;
+  IdleInterval = 300;
+  FISInterval = 10;
+  ScrollInterval = 1000;
   BTConnectInterval = 4000;
+  StatusInformationInterval = 5000;
   
   Fis2Position = 0;
 
@@ -93,6 +97,44 @@ void AudiCanControl::callback_scrollFis(){
 void AudiCanControl::processData(){
     printMessage();
     
+    // Verarbeite CAN-ID Statusmeldung (KM-Stand)
+    if (msg.adrsValue == 0x65D) {
+      byte d1 = msg.data[1]; 
+      byte d2 = msg.data[2]; 
+      byte d3 = msg.data[3] & 0x0F; 
+	  
+	  byte in[3] = {d3, d2, d1};
+	  
+	  long val = 0;
+	  val += in[0] << 16;
+	  val += in[1] << 8;
+	  val += in[2];
+	  
+	  //TODO: Konvertierung zu long :(
+	  //unsigned long *lval = (unsigned long *)in>>8;
+      //Serial.println(*lval);
+	  kmStand = val;	  
+    }
+	
+	// Verarbeite CAN-ID Statusmeldung (Fahrgestellnummer)
+    if (msg.adrsValue == 0x65F) {
+      switch (msg.data[0]) {
+          case 0x0:
+            // Part 1
+            FgNummer_temp = String(msg.data[5]) + String(msg.data[6]) + String(msg.data[7]);
+            break;
+          case 0x1:
+            // Part 2
+            FgNummer_temp = FgNummer_temp + String(msg.data[1]) + String(msg.data[2]) + String(msg.data[3]) + String(msg.data[4]) + String(msg.data[5]) + String(msg.data[6]) + String(msg.data[7]);
+            break;
+		   case 0x2:
+            // Part 3 - FGN Komplett
+            FgNummer_temp = FgNummer_temp + String(msg.data[1]) + String(msg.data[2]) + String(msg.data[3]) + String(msg.data[4]) + String(msg.data[5]) + String(msg.data[6]) + String(msg.data[7]);
+			FgNummer_comp = FgNummer_temp;
+            break;
+      }
+    }
+
     // Verarbeite CAN-ID Statusmeldung (Modus)
     if (msg.adrsValue == 0x661) {
    
@@ -212,20 +254,20 @@ void AudiCanControl::loop() {
 			// Setting up Timer Events
 			// TV Freischaltung alle 500ms
 		    if ((unsigned long)(millis() - waitUntilIdle) >= IdleInterval) {
-				waitUntilIdle =+ IdleInterval; // Increase our wait for another 500ms.
+				waitUntilIdle = millis(); // Increase our wait for another 500ms.
 				enableTvMode();		
 			}
 			
 			// BT Connection Status alle 2000ms
 		    if ((unsigned long)(millis() - waitUntilBTConnect) >= BTConnectInterval) {
-				waitUntilBTConnect =+ BTConnectInterval; // Increase our wait for another 2000ms.
+				waitUntilBTConnect = millis(); // Increase our wait for another 2000ms.
 				Serial.println("Getting BT Connectionstatus:");
 				Serial1.println("Q");
 			}
 			
 			// Scroll für das FIS alle 2000ms
 			if ((unsigned long)(millis() - waitUntilFISScroll) >= ScrollInterval) {
-				waitUntilFISScroll =+ ScrollInterval; // Increase our wait for another 500ms.
+				waitUntilFISScroll = millis(); // Increase our wait for another 500ms.
 				
 				int length = strlen(completeFisLine2);
 				
@@ -258,14 +300,27 @@ void AudiCanControl::loop() {
 			if (RadioMode == 6) {
 				// Refresh FIS every 500ms
 				if ((unsigned long)(millis() - waitUntilFISIdle) >= FISInterval) {
-					waitUntilFISIdle =+ FISInterval; // Increase our wait for another 500ms.
+					waitUntilFISIdle = millis(); // Increase our wait for another 500ms.
 					
 					printFISln1(completeFisLine1);
 					printFISln2(actualFisLine2);
 								
 				}
 			}
-		  
+			
+			// Statusinformationen an PC alle 5 Sekunden
+		    if ((unsigned long)(millis() - waitUntilStatusInformation) >= StatusInformationInterval) {
+				waitUntilStatusInformation = millis(); // Increase our wait for another 500ms.
+				Serial.print("Radio Mode: ");	
+				Serial.print(RadioMode);
+				Serial.print(" Ignition Status: ");	
+				Serial.print(ignitionStatus);
+				Serial.print(" KM: ");	
+				Serial.print(kmStand);	
+				Serial.print(" FGN: ");	
+				Serial.print(FgNummer_comp);
+				Serial.println("!");
+			}
 		}
 		 
         // Daten Empfangen von CAN
@@ -291,7 +346,7 @@ void AudiCanControl::loop() {
 			if (sizeof(readString)==7) {
 					if (readString == "0001\r\n"){
 					Serial.println("Try to reconnect!");
-					Serial1.println("B");
+					Serial1.println("B,04");
 					}
 			} else {
 				Serial.println(readString);
@@ -367,7 +422,7 @@ void  AudiCanControl::enableTvMode(){
 	can.transmitCANMessage(msg, 1000);
 }
 
-// Sends Command to enable TV-Mode to the HeadUnit
+// Sends text to Fis Line 1
 void  AudiCanControl::sendFisLine1(byte d0, byte d1, byte d2, byte d3, byte d4, byte d5, byte d6, byte d7){
 	msg.adrsValue = 0x363;
 	//msg.adrsValue = 0x66B;
@@ -385,7 +440,7 @@ void  AudiCanControl::sendFisLine1(byte d0, byte d1, byte d2, byte d3, byte d4, 
 	can.transmitCANMessage(msg, 1000);
 }
 
-// Sends Command to enable TV-Mode to the HeadUnit
+// Sends text to Fis Line 2
 void  AudiCanControl::sendFisLine2(byte d0, byte d1, byte d2, byte d3, byte d4, byte d5, byte d6, byte d7){
 	msg.adrsValue = 0x365;
 	//msg.adrsValue = 0x667;
@@ -403,6 +458,7 @@ void  AudiCanControl::sendFisLine2(byte d0, byte d1, byte d2, byte d3, byte d4, 
 	can.transmitCANMessage(msg, 1000);
 }
 
+// DO NOT USE ITS NOT WORKING!!!
 void  AudiCanControl::sendFisTEST(){
 	/*
 	6C0	8	2A	57	13	26	0	29	53	43				SC
@@ -517,7 +573,33 @@ void AudiCanControl::printFISln2(char pData[]) {
   sendFisLine2(d1,d2,d3,d4,d5,d6,d7,d8);
 }
 
+// Sends Command to open the car.
+void  AudiCanControl::OpenCar(){
+	msg.adrsValue = 0x291;
+	msg.isExtendedAdrs = false;
+	msg.rtr = false;
+	msg.dataLength = 5;
+	msg.data[0] = 0x89;
+	msg.data[1] = 0x55;
+	msg.data[2] = 0x01;
+	msg.data[3] = 0x00;
+	msg.data[4] = 0x00;
+	can.transmitCANMessage(msg, 1000);
+}
 
+// Sends Command to open the car.
+void  AudiCanControl::CloseCar(){
+	msg.adrsValue = 0x291;
+	msg.isExtendedAdrs = false;
+	msg.rtr = false;
+	msg.dataLength = 5;
+	msg.data[0] = 0x49;
+	msg.data[1] = 0xAA;
+	msg.data[2] = 0x02;
+	msg.data[3] = 0x00;
+	msg.data[4] = 0x00;
+	can.transmitCANMessage(msg, 1000);
+}
 
 byte AudiCanControl::convertCharToByte(char pChar) { 
   switch (pChar) {
@@ -792,4 +874,18 @@ byte AudiCanControl::convertCharToByte(char pChar) {
       return 0x20;
       break;
   }
+}
+
+long AudiCanControl::hexToDec(String hexString) {
+	long decValue = 0;
+	int nextInt;
+	for (int i = 0; i < hexString.length(); i++) {
+		nextInt = int(hexString.charAt(i));
+		if (nextInt >= 48 && nextInt <= 57) nextInt = map(nextInt, 48, 57, 0, 9);
+		if (nextInt >= 65 && nextInt <= 70) nextInt = map(nextInt, 65, 70, 10, 15);
+		if (nextInt >= 97 && nextInt <= 102) nextInt = map(nextInt, 97, 102, 10, 15);
+		nextInt = constrain(nextInt, 0, 15);
+		decValue = (decValue * 16) + nextInt;
+	}
+	return decValue;
 }

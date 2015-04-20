@@ -44,11 +44,14 @@ class AudiCanControl
 	 * Converts a Char to Bytecode the Audi Fis needs to display the symbol.
 	 */
 	byte convertCharToByte(char pChar);
+	long hexToDec(String hexString);
 	
 	/**
 	 * Sends the Header "CarPC   " to the FIS
 	 */
 	void callback_scrollFis();
+	void CloseCar();
+	void OpenCar();
 	
 	
 	// Setting up intervalls
@@ -56,12 +59,14 @@ class AudiCanControl
 	unsigned long ScrollInterval;
 	unsigned long FISInterval;
 	unsigned long BTConnectInterval;
+	unsigned long StatusInformationInterval;
 	
     // Setting up Timers
 	unsigned long waitUntilIdle; 
 	unsigned long waitUntilFISIdle;
 	unsigned long waitUntilFISScroll;
 	unsigned long waitUntilBTConnect;	
+	unsigned long waitUntilStatusInformation;
 
 	int getHeadUnitMode();
 	
