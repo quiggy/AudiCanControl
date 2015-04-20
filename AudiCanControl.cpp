@@ -13,7 +13,7 @@
 int actPosition = 0;
 int RadioMode = 0;
 int ignitionStatus = 1;
-int kmStand = 0;
+long kmStand = 0;
 String FgNummer_temp = "";
 String FgNummer_comp = "";
 
@@ -99,37 +99,36 @@ void AudiCanControl::processData(){
     
     // Verarbeite CAN-ID Statusmeldung (KM-Stand)
     if (msg.adrsValue == 0x65D) {
-      byte d1 = msg.data[1]; 
+	  byte d1 = msg.data[1]; 
       byte d2 = msg.data[2]; 
-      byte d3 = msg.data[3] & 0x0F; 
+      byte d3 = msg.data[3];
+      d3 = d3 & 0x0F;
 	  
-	  byte in[3] = {d3, d2, d1};
+      byte in[3] = {d3, d2, d1};
 	  
-	  long val = 0;
-	  val += in[0] << 16;
-	  val += in[1] << 8;
-	  val += in[2];
+      long value = 0;
+      for (int i = 0; i < sizeof(in); i++)
+      {
+         value = (value << 8) + (in[i] & 0xff);
+      }	  
 	  
-	  //TODO: Konvertierung zu long :(
-	  //unsigned long *lval = (unsigned long *)in>>8;
-      //Serial.println(*lval);
-	  kmStand = val;	  
+	  kmStand = value;
     }
 	
 	// Verarbeite CAN-ID Statusmeldung (Fahrgestellnummer)
     if (msg.adrsValue == 0x65F) {
       switch (msg.data[0]) {
-          case 0x0:
+          case 0x00:
             // Part 1
-            FgNummer_temp = String(msg.data[5]) + String(msg.data[6]) + String(msg.data[7]);
+            FgNummer_temp = String((char)msg.data[5]) + String((char)msg.data[6]) + String((char)msg.data[7]);
             break;
-          case 0x1:
+          case 0x01:
             // Part 2
-            FgNummer_temp = FgNummer_temp + String(msg.data[1]) + String(msg.data[2]) + String(msg.data[3]) + String(msg.data[4]) + String(msg.data[5]) + String(msg.data[6]) + String(msg.data[7]);
+            FgNummer_temp = FgNummer_temp + String((char)msg.data[1]) + String((char)msg.data[2]) + String((char)msg.data[3]) + String((char)msg.data[4]) + String((char)msg.data[5]) +String((char)msg.data[6]) + String((char)msg.data[7]);
             break;
-		   case 0x2:
+		   case 0x02:
             // Part 3 - FGN Komplett
-            FgNummer_temp = FgNummer_temp + String(msg.data[1]) + String(msg.data[2]) + String(msg.data[3]) + String(msg.data[4]) + String(msg.data[5]) + String(msg.data[6]) + String(msg.data[7]);
+            FgNummer_temp = FgNummer_temp + String((char)msg.data[1]) + String((char)msg.data[2]) + String((char)msg.data[3]) + String((char)msg.data[4]) + String((char)msg.data[5]) +String((char)msg.data[6]) + String((char)msg.data[7]);
 			FgNummer_comp = FgNummer_temp;
             break;
       }
@@ -190,19 +189,21 @@ void AudiCanControl::processData(){
 			switch (msg.data[3]) {
 				case 0x2:
 					// Taste: Zurück _Down
-					digitalWrite(cmdPin, LOW);   // Turns CMD-Mode of RN-52 on.
+					//digitalWrite(cmdPin, LOW);   // Turns CMD-Mode of RN-52 on.
 					//delay(3);
 					Serial1.println("AT+");		 // Tells RN-52 so send next track to BT-Device.
 					//delay(3);
 					//digitalWrite(cmdPin, HIGH);	 // Turns CMD-Mode of RN-52 off.
+					CarO();
 					break;
 				case 0x1:
 					// Taste: Vor _Down
-					digitalWrite(cmdPin, LOW);   // Turns CMD-Mode of RN-52 on.
+					//digitalWrite(cmdPin, LOW);   // Turns CMD-Mode of RN-52 on.
 					//delay(3);
 					Serial1.println("AT-");		 // Tells RN-52 so send next track to BT-Device.
 					//delay(3);
 					//digitalWrite(cmdPin, HIGH);	 // Turns CMD-Mode of RN-52 off.
+					
 					break;
 			}
 		}
