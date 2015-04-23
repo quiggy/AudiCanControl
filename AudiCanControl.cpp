@@ -9,13 +9,18 @@
 // 0x363	Zeile1
 // 0x365	Zeile2
 
-
+// Variables only for calculation 
 int actPosition = 0;
+String FgNummer_temp = "";
+
+// Class-Variables 
 int RadioMode = 0;
 int ignitionStatus = 1;
 long kmStand = 0;
-String FgNummer_temp = "";
 String FgNummer_comp = "";
+float speed;
+int direction;
+float volt = 0;
 
 char completeFisLine1[] = " iPhone ";
 char completeFisLine2[] = "RNS-E BT Dies ist ein TEst";
@@ -99,20 +104,19 @@ void AudiCanControl::processData(){
     
     // Verarbeite CAN-ID Statusmeldung (KM-Stand)
     if (msg.adrsValue == 0x65D) {
-	  byte d1 = msg.data[1]; 
-      byte d2 = msg.data[2]; 
-      byte d3 = msg.data[3];
-      d3 = d3 & 0x0F;
+	byte d1 = msg.data[1]; 
+	byte d2 = msg.data[2]; 
+	byte d3 = msg.data[3];
+	d3 = d3 & 0x0F;
 	  
-      byte in[3] = {d3, d2, d1};
+	byte in[3] = {d3, d2, d1};
 	  
-      long value = 0;
-      for (int i = 0; i < sizeof(in); i++)
-      {
-         value = (value << 8) + (in[i] & 0xff);
-      }	  
-	  
-	  kmStand = value;
+	long value = 0;
+	for (int i = 0; i < sizeof(in); i++)
+	{
+        	value = (value << 8) + (in[i] & 0xff);
+	}	  
+	kmStand = value;
     }
 	
 	// Verarbeite CAN-ID Statusmeldung (Fahrgestellnummer)
@@ -124,15 +128,50 @@ void AudiCanControl::processData(){
             break;
           case 0x01:
             // Part 2
-            FgNummer_temp = FgNummer_temp + String((char)msg.data[1]) + String((char)msg.data[2]) + String((char)msg.data[3]) + String((char)msg.data[4]) + String((char)msg.data[5]) +String((char)msg.data[6]) + String((char)msg.data[7]);
+            FgNummer_temp = FgNummer_temp + String((char)msg.data[1]) + String((char)msg.data[2]) + String((char)msg.data[3]) + String((char)msg.data[4]) + String((char)msg.data[5]) +String((char)msg.data[6]) + 	    String((char)msg.data[7]);
             break;
 		   case 0x02:
             // Part 3 - FGN Komplett
-            FgNummer_temp = FgNummer_temp + String((char)msg.data[1]) + String((char)msg.data[2]) + String((char)msg.data[3]) + String((char)msg.data[4]) + String((char)msg.data[5]) +String((char)msg.data[6]) + String((char)msg.data[7]);
+            FgNummer_temp = FgNummer_temp + String((char)msg.data[1]) + String((char)msg.data[2]) + String((char)msg.data[3]) + String((char)msg.data[4]) + String((char)msg.data[5]) +String((char)msg.data[6]) + 	    String((char)msg.data[7]);
 			FgNummer_comp = FgNummer_temp;
             break;
       }
     }
+	
+	// Verarbeite CAN-ID Statusmeldung (Geschwindigkeit/Richtung)
+    if (msg.adrsValue == 0x351) {
+		printMessage();
+		byte d0 = msg.data[0]; 
+		byte d1 = msg.data[1]; 
+        byte d2 = msg.data[2];
+		
+		if ( d0 = 0x00 ) {direction = 0;}
+		if ( d0 = 0x02 ) {direction = 1;}
+		
+		byte in[2] = {d2, d1};
+		
+		speed = ((d2 << 8)+d1-1)/190;
+    }
+
+	// Verarbeite CAN-ID Statusmeldung (Batteriespannung)
+    if (msg.adrsValue == 0x571) {
+		byte d0 = msg.data[0]; 
+		volt =  5 + (0.05 * d0);
+    }
+	
+	// Verarbeite CAN-ID Statusmeldung (Türsensoren)
+    if (msg.adrsValue == 0x470) {
+		//00 Alle Türen zu
+		//01 Vorne links offen
+		//02 Vorne rechts offen
+		//04 Hinten links offen
+		//08 Hinten rechts offen
+		//60 Heckklappe offen
+		//10 Motorhaube offen 
+		
+		byte d0 = msg.data[1]; 
+    }
+	
 
     // Verarbeite CAN-ID Statusmeldung (Modus)
     if (msg.adrsValue == 0x661) {
@@ -152,6 +191,38 @@ void AudiCanControl::processData(){
             break;
           }
       }
+	  
+	  // Verarbeite CAN-ID Statusmeldung (Zündung)
+		if (msg.adrsValue == 0x2c3) {
+		// Status wird ausgelesen
+         switch (msg.data[0]) {
+          case 0x10:
+            // Status: Kein Schlüssel
+            if (ignitionStatus != 1){ignitionStatus = 1;}
+            break;
+          case 0x11:
+            // Status: Schlüssel steckt
+            if (ignitionStatus != 2){ignitionStatus = 2;}
+            break;
+		  case 0x01:
+            // Status: Lenkradschloss entriegelt
+            if (ignitionStatus != 3){ignitionStatus = 3;}
+            break;
+		  case 0x05:
+            // Status: Display an
+            if (ignitionStatus != 4){ignitionStatus = 4;}
+            break;
+		  case 0x07:
+            // Status: Zündung ein
+            if (ignitionStatus != 5){ignitionStatus = 5;}
+            break;
+		  case 0x0B:
+            // Status: Zündung ein und Anlasser
+            if (ignitionStatus != 6){ignitionStatus = 6;}
+            break;
+          }
+		
+		}
       
        // Datenbits für Status werden Überprüft (Modus)
       if ((msg.data[0] == 0x83) && (msg.data[1]==0x01) && (msg.data[2]==0x12)){
@@ -194,7 +265,7 @@ void AudiCanControl::processData(){
 					Serial1.println("AT+");		 // Tells RN-52 so send next track to BT-Device.
 					//delay(3);
 					//digitalWrite(cmdPin, HIGH);	 // Turns CMD-Mode of RN-52 off.
-					CarO();
+					//CarO();
 					break;
 				case 0x1:
 					// Taste: Vor _Down
@@ -208,38 +279,6 @@ void AudiCanControl::processData(){
 			}
 		}
     }
-	
-	// Verarbeite CAN-ID Statusmeldung (Zündung)
-    if (msg.adrsValue == 0x2c3) {
-		// Status wird ausgelesen
-         switch (msg.data[0]) {
-          case 0x10:
-            // Status: Kein Schlüssel
-            if (ignitionStatus != 1){ignitionStatus = 1;}
-            break;
-          case 0x11:
-            // Status: Schlüssel steckt
-            if (ignitionStatus != 2){ignitionStatus = 2;}
-            break;
-		  case 0x01:
-            // Status: Lenkradschloss entriegelt
-            if (ignitionStatus != 3){ignitionStatus = 3;}
-            break;
-		  case 0x05:
-            // Status: Display an
-            if (ignitionStatus != 4){ignitionStatus = 4;}
-            break;
-		  case 0x07:
-            // Status: Zündung ein
-            if (ignitionStatus != 5){ignitionStatus = 5;}
-            break;
-		  case 0x0B:
-            // Status: Zündung ein und Anlasser
-            if (ignitionStatus != 6){ignitionStatus = 6;}
-            break;
-          }
-		
-	}
   }
   
 void AudiCanControl::loop() {
@@ -582,7 +621,7 @@ void  AudiCanControl::OpenCar(){
 	msg.dataLength = 5;
 	msg.data[0] = 0x89;
 	msg.data[1] = 0x55;
-	msg.data[2] = 0x01;
+	msg.data[2] = 0x00;
 	msg.data[3] = 0x00;
 	msg.data[4] = 0x00;
 	can.transmitCANMessage(msg, 1000);
